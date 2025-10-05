@@ -1,83 +1,161 @@
+# Netlify Configuration for Coiffeur Platform
+
 [build]
+  # Build command and publish directory
+  command = "pnpm install && pnpm build"
   publish = "apps/web/.next"
-  command = "pnpm build"
+  functions = "netlify/functions"
 
 [build.environment]
+  # Node version for builds
   NODE_VERSION = "18"
   NPM_FLAGS = "--version" # prevent Netlify npm install
+  NETLIFY_USE_PNPM = "true"
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+  # Enable Next.js optimizations
+  NETLIFY_NEXT_PLUGIN_SKIP = "false"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
+# Production context
 [context.production]
   command = "pnpm install && pnpm build"
 
 [context.production.environment]
   NODE_ENV = "production"
+  NEXT_PUBLIC_SITE_URL = "https://coiffeur-platform.ch"
 
-[context.deploy-preview]
-  command = "pnpm install && pnpm build"
-
+# Staging/branch deploy context
 [context.branch-deploy]
   command = "pnpm install && pnpm build"
 
-# Security headers
+[context.branch-deploy.environment]
+  NODE_ENV = "staging"
+  NEXT_PUBLIC_SITE_URL = "https://$BRANCH.coiffeur-platform.netlify.app"
+
+# Preview context for pull requests
+[context.deploy-preview]
+  command = "pnpm install && pnpm build"
+
+[context.deploy-preview.environment]
+  NODE_ENV = "preview"
+  NEXT_PUBLIC_SITE_URL = "https://deploy-preview-$REVIEW_ID--coiffeur-platform.netlify.app"
+
+# Redirects
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+# Redirect www to non-www
+[[redirects]]
+  from = "https://www.coiffeur-platform.ch/*"
+  to = "https://coiffeur-platform.ch/:splat"
+  status = 301
+  force = true
+
+# Force HTTPS
+[[redirects]]
+  from = "http://coiffeur-platform.ch/*"
+  to = "https://coiffeur-platform.ch/:splat"
+  status = 301
+  force = true
+
+# SPA fallback for Next.js
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  conditions = {Role = ["admin"]}
+
+# Security headers for all routes
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "DENY"
+    X-Frame-Options = "SAMEORIGIN"
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.stripe.com https://*.sumup.com https://www.googletagmanager.com https://*.sentry.io;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com data:;
+      img-src 'self' data: blob: https://*.supabase.co https://*.stripe.com;
+      connect-src 'self' https://*.supabase.co https://*.stripe.com https://*.sumup.com https://*.sentry.io wss://*.supabase.co;
+      frame-src 'self' https://*.stripe.com https://*.sumup.com;
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      frame-ancestors 'none';
+      upgrade-insecure-requests;
+    """
 
+# API headers
 [[headers]]
   for = "/api/*"
   [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "Content-Type, Authorization"
-    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
 
-# Cache static assets
+# Static asset caching
 [[headers]]
   for = "/_next/static/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# Image caching
 [[headers]]
   for = "/images/*"
   [headers.values]
-    Cache-Control = "public, max-age=31536000"
+    Cache-Control = "public, max-age=86400, s-maxage=31536000"
+
+# Font caching
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Functions configuration (if using Netlify Functions)
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+  [functions."*"]
+    external_node_modules = ["@supabase/supabase-js", "stripe"]
 
 # Forms (for contact forms, etc.)
 [forms]
-  settings = true
+  honeypot = true
 
-# Functions configuration
-[functions]
-  directory = "apps/web/netlify/functions"
-  node_bundler = "esbuild"
-
-# Plugin configuration
+# Plugins configuration
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[[plugins]]
-  package = "netlify-plugin-pnpm"
+# Environment variable validation
+[build.processing]
+  skip_processing = false
 
-# Environment variables for different contexts
-[context.production.environment]
-  NEXT_PUBLIC_SITE_URL = "https://yourdomain.netlify.app"
+[build.processing.css]
+  bundle = true
+  minify = true
 
-[context.deploy-preview.environment]
-  NEXT_PUBLIC_SITE_URL = "https://deploy-preview-$DEPLOY_PRIME_URL"
+[build.processing.js]
+  bundle = true
+  minify = true
 
-[context.branch-deploy.environment]
-  NEXT_PUBLIC_SITE_URL = "https://$DEPLOY_PRIME_URL"
+[build.processing.html]
+  pretty_urls = true
+
+[build.processing.images]
+  compress = true
+
+# Dev settings for local testing
+[dev]
+  command = "pnpm dev"
+  port = 3000
+  targetPort = 3000
+  publish = "apps/web/.next"
+  autoLaunch = false

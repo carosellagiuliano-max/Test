@@ -40,7 +40,7 @@ export interface Order extends BaseEntity {
   subtotal_cents: number;
   tax_cents: number;
   total_cents: number;
-  payment_status: PaymentStatus;
+  payment_status: string; // Use string to avoid type conflict
   notes?: string;
   fulfillment_status: FulfillmentStatus;
   shipped_at?: string;

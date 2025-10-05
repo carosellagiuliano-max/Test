@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, idempotency-key',
 }
 
 interface BookingRequest {
@@ -13,6 +13,20 @@ interface BookingRequest {
   start_time: string
   notes?: string
   send_confirmation?: boolean
+  payment_method?: 'deposit' | 'full' | 'cash'
+  idempotency_key?: string
+}
+
+interface BookingResponse {
+  appointment_id: string
+  booking_reference: string
+  customer: any
+  service: any
+  staff: any
+  date_time: any
+  payment: any
+  calendar_event: any
+  cancellation_policy: any
 }
 
 serve(async (req) => {
@@ -54,13 +68,55 @@ serve(async (req) => {
     }
 
     const bookingData: BookingRequest = await req.json()
+    const idempotencyKey = req.headers.get('Idempotency-Key') || bookingData.idempotency_key
 
     // Validate required fields
     if (!bookingData.customer_id || !bookingData.staff_id || !bookingData.service_id || !bookingData.start_time) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({
+          error: 'Missing required fields',
+          code: 'VALIDATION_ERROR',
+          details: 'customer_id, staff_id, service_id, and start_time are required'
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    // Check for duplicate request if idempotency key provided
+    if (idempotencyKey) {
+      const { data: existingAttempt } = await supabaseClient
+        .from('booking_attempts')
+        .select('*')
+        .eq('idempotency_key', idempotencyKey)
+        .eq('success', true)
+        .single()
+
+      if (existingAttempt) {
+        const { data: existingAppointment } = await supabaseClient
+          .from('appointments')
+          .select(`
+            *,
+            customer:users!customer_id(first_name, last_name, email, phone),
+            staff:users!staff_id(first_name, last_name),
+            service:services(name, duration_minutes, price_cents)
+          `)
+          .eq('customer_id', existingAttempt.customer_id)
+          .eq('service_id', existingAttempt.service_id)
+          .eq('start_time', existingAttempt.requested_start_time)
+          .single()
+
+        if (existingAppointment) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              data: existingAppointment,
+              message: 'Booking already exists (idempotent)',
+              duplicate: true
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+      }
     }
 
     // Get service details to calculate end time and price

@@ -112,12 +112,12 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 # 4152127777 = "123456"
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
-[auth.captcha.hcaptcha]
-enabled = false
-site_key = "env(SUPABASE_AUTH_CAPTCHA_HCAPTCHA_SITE_KEY)"
-secret_key = "env(SUPABASE_AUTH_CAPTCHA_HCAPTCHA_SECRET_KEY)"
-
-[edge_runtime]
+# [auth.captcha.hcaptcha]
+# enabled = false
+# site_key = "env(SUPABASE_AUTH_CAPTCHA_HCAPTCHA_SITE_KEY)"
+# secret_key = "env(SUPABASE_AUTH_CAPTCHA_HCAPTCHA_SECRET_KEY)"
+# 
+# [edge_runtime]
 enabled = true
 # Configure one of the supported request policies: `oneshot`, `per_worker`.
 # Use `oneshot` for hot-reloading edge functions on local development.
