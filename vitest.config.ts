@@ -7,6 +7,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
+    include: ['tests/unit/**/*.test.ts', 'supabase/edge/__tests__/**/*.test.ts'],
+    exclude: ['tests/e2e/**', 'tests/integration/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
