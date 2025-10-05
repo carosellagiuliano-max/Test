@@ -1,28 +1,50 @@
-import { format, isWeekend, isSunday, parse, addMinutes, isWithinInterval } from 'date-fns'
-import { toZonedTime, fromZonedTime } from 'date-fns-tz'
+import {
+  format,
+  addMinutes,
+  startOfDay,
+  addMonths,
+  isBefore,
+  isAfter
+} from 'date-fns'
+import { toZonedTime } from 'date-fns-tz'
 
 const TIMEZONE = 'Europe/Zurich'
 
 export class BookingLogic {
   // Swiss VAT rate
   static readonly VAT_RATE = 0.077
+  static readonly MAX_ADVANCE_MONTHS = 6
 
   // Business hours
   static readonly BUSINESS_HOURS = {
     weekday: { start: '08:00', end: '18:00' },
     saturday: { start: '09:00', end: '16:00' },
-    sunday: null // Closed
+    sunday: null as { start: string; end: string } | null
   }
 
-  static calculatePriceWithVAT(basePrice: number): { subtotal: number; vat: number; total: number } {
-    const vat = Math.round(basePrice * this.VAT_RATE)
-    const total = basePrice + vat
+  static calculatePriceWithVAT(
+    basePrice: number,
+    includeVAT: boolean = true
+  ): { subtotal: number; vat: number; total: number } {
+    const vat = includeVAT ? Math.round(basePrice * this.VAT_RATE) : 0
+    const total = includeVAT ? basePrice + vat : basePrice
     return { subtotal: basePrice, vat, total }
   }
 
+  static calculateVATAmount(amount: number): number {
+    return Math.round(amount * this.VAT_RATE)
+  }
+
   static formatSwissPrice(priceCents: number): string {
-    const price = priceCents / 100
-    return `CHF ${price.toFixed(2).replace('.', '.')}`
+    const formatter = new Intl.NumberFormat('de-CH', {
+      style: 'currency',
+      currency: 'CHF',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
+
+    // Replace non-breaking spaces with regular spaces for consistency in tests/UI
+    return formatter.format(priceCents / 100).replace(/\u00a0/g, ' ')
   }
 
   static calculateBookingEndTime(startTime: Date, durationMinutes: number): Date {
@@ -31,27 +53,38 @@ export class BookingLogic {
 
   static isBusinessDay(date: Date): boolean {
     const zonedDate = toZonedTime(date, TIMEZONE)
-    return !isSunday(zonedDate)
+    const day = zonedDate.getDay()
+    return day !== 0
   }
 
   static isValidBookingDate(date: Date): boolean {
     const zonedDate = toZonedTime(date, TIMEZONE)
+    const bookingDayStart = startOfDay(zonedDate)
 
-    // Check if it's a business day
     if (!this.isBusinessDay(zonedDate)) {
       return false
     }
 
-    // Check if it's in the future
-    const now = toZonedTime(new Date(), TIMEZONE)
-    return zonedDate > now
+    const today = toZonedTime(new Date(), TIMEZONE)
+    const todayStart = startOfDay(today)
+
+    if (isBefore(bookingDayStart, todayStart)) {
+      return false
+    }
+
+    const maxDate = addMonths(todayStart, this.MAX_ADVANCE_MONTHS)
+    if (isAfter(bookingDayStart, maxDate)) {
+      return false
+    }
+
+    return true
   }
 
   static generateTimeSlots(date: Date, serviceDuration: number): string[] {
     const zonedDate = toZonedTime(date, TIMEZONE)
 
     // Closed on Sunday
-    if (isSunday(zonedDate)) {
+    if (!this.isBusinessDay(zonedDate)) {
       return []
     }
 
@@ -85,6 +118,36 @@ export class BookingLogic {
     return slots
   }
 
+  static isValidBookingTime(time: string, date: Date): boolean {
+    const zonedDate = toZonedTime(date, TIMEZONE)
+
+    if (!this.isBusinessDay(zonedDate)) {
+      return false
+    }
+
+    const hours = zonedDate.getDay() === 6
+      ? this.BUSINESS_HOURS.saturday
+      : this.BUSINESS_HOURS.weekday
+
+    if (!hours) {
+      return false
+    }
+
+    const [hour, minute] = time.split(':').map(Number)
+    if (Number.isNaN(hour) || Number.isNaN(minute)) {
+      return false
+    }
+
+    const [startHour, startMinute] = hours.start.split(':').map(Number)
+    const [endHour, endMinute] = hours.end.split(':').map(Number)
+
+    const totalMinutes = hour * 60 + minute
+    const startMinutes = startHour * 60 + startMinute
+    const endMinutes = endHour * 60 + endMinute
+
+    return totalMinutes >= startMinutes && totalMinutes < endMinutes
+  }
+
   static validateAppointmentConflict(
     newStart: Date,
     newDuration: number,
@@ -111,21 +174,34 @@ export class BookingLogic {
   }
 
   static isValidSwissPhone(phone: string): boolean {
-    // Remove all spaces and hyphens
     const cleaned = phone.replace(/[\s-]/g, '')
 
-    // Swiss phone number patterns:
-    // +41791234567 (international)
-    // 0041791234567 (international alternative)
-    // 0791234567 (national)
+    const international = cleaned.startsWith('+41') || cleaned.startsWith('0041')
+    const national = cleaned.startsWith('0')
 
-    // Must match exactly the right number of digits
-    const patterns = [
-      /^(\+41|0041)[1-9]\d{8}$/, // International format (total 11 or 13 chars)
-      /^0[1-9]\d{8}$/ // National format (total 10 digits)
-    ]
+    if (!international && !national) {
+      return false
+    }
 
-    return patterns.some(pattern => pattern.test(cleaned))
+    let digits = cleaned
+    if (international) {
+      digits = cleaned.replace(/^\+41/, '').replace(/^0041/, '')
+    } else {
+      digits = cleaned.substring(1)
+    }
+
+    if (digits.length !== 9) {
+      return false
+    }
+
+    const prefix = digits.substring(0, 2)
+    const firstDigit = digits[0]
+
+    if (firstDigit === '7') {
+      return /^7[6-9]/.test(prefix)
+    }
+
+    return /^[1-6]\d$/.test(prefix)
   }
 
   static validateSwissPostalCode(code: string): boolean {

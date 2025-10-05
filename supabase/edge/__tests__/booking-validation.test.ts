@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
 import { validateBookingData } from '../booking-validation/validation'
 import { createClient } from '@supabase/supabase-js'
 
@@ -17,6 +17,15 @@ describe('Booking Validation Edge Function', () => {
     rpc: vi.fn()
   }
 
+  beforeAll(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2024-01-10T09:00:00Z'))
+  })
+
+  afterAll(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     ;(createClient as any).mockReturnValue(mockSupabaseClient)
@@ -27,7 +36,7 @@ describe('Booking Validation Edge Function', () => {
       service_id: '123e4567-e89b-12d3-a456-426614174000',
       staff_id: '223e4567-e89b-12d3-a456-426614174001',
       customer_id: '323e4567-e89b-12d3-a456-426614174002',
-      appointment_date: '2025-01-15',
+      appointment_date: '2024-02-15',
       start_time: '10:00',
       end_time: '11:00',
       customer_name: 'John Doe',
@@ -155,7 +164,17 @@ describe('Booking Validation Edge Function', () => {
     })
 
     it('should handle missing required fields', () => {
-      const requiredFields = ['service_id', 'staff_id', 'customer_id', 'appointment_date', 'start_time', 'end_time', 'customer_email']
+      const requiredFields = [
+        'service_id',
+        'staff_id',
+        'customer_id',
+        'appointment_date',
+        'start_time',
+        'end_time',
+        'customer_email',
+        'customer_name',
+        'customer_phone'
+      ]
 
       requiredFields.forEach(field => {
         const invalidData = { ...validBookingData }
@@ -181,12 +200,14 @@ describe('Booking Validation Edge Function', () => {
         ...validBookingData,
         customer_name: '  John Doe  ',
         customer_email: ' john@example.com ',
+        customer_phone: '  +41 79 123 45 67  ',
         notes: '  First appointment  '
       }
       const result = validateBookingData(dataWithWhitespace)
       expect(result.isValid).toBe(true)
       expect(result.sanitizedData?.customer_name).toBe('John Doe')
       expect(result.sanitizedData?.customer_email).toBe('john@example.com')
+      expect(result.sanitizedData?.customer_phone).toBe('+41791234567')
       expect(result.sanitizedData?.notes).toBe('First appointment')
     })
 
@@ -209,7 +230,7 @@ describe('Booking Validation Edge Function', () => {
       const promises = Array.from({ length: 10 }, (_, i) =>
         validateBookingData({
           ...validBookingData,
-          customer_id: `customer-${i}`
+          customer_id: `323e4567-e89b-12d3-a456-42661417400${i}`
         })
       )
 

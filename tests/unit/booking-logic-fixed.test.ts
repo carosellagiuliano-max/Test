@@ -1,5 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { BookingLogic } from '../../lib/booking-logic'
+
+const FIXED_NOW = new Date('2024-01-10T09:00:00Z')
+
+beforeAll(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(FIXED_NOW)
+})
+
+afterAll(() => {
+  vi.useRealTimers()
+})
 
 describe('BookingLogic', () => {
   describe('calculatePriceWithVAT', () => {

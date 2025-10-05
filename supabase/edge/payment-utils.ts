@@ -3,9 +3,9 @@ import type {
   ServiceItem,
   VATRateType,
   PaymentCalculation,
-  CustomerInfo,
-  ValidationError,
-} from '../../../packages/types/src/payment-types.ts';
+  CustomerInfo
+} from '../../packages/types/src/payment-types.ts'
+import { ValidationError } from '../../packages/types/src/payment-types.ts'
 
 // Swiss VAT rates
 export const SWISS_VAT_RATES = {
